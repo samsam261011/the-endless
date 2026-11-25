@@ -11,7 +11,8 @@ npm run dev
 ## Étape 1 (actuelle)
 - Labyrinthe infini généré par chunks à partir d'une graine (`?seed=123` dans l'URL pour rejouer le même).
 - Vue 3D à la troisième personne (caméra derrière le personnage), déplacement libre avec collisions.
-- Glisser la souris : tourner la caméra. Molette : zoom.
+- La caméra reste toujours derrière le personnage ; la souris le fait tourner (clic pour capturer, Échap pour libérer).
+- P : passer de la vue 3e personne à la vue 1re personne (avec les mains). Molette : zoom en 3e personne.
 - `R` : nouveau labyrinthe.
 
 ## Architecture

@@ -6,8 +6,8 @@ export class Avatar {
   readonly root = new THREE.Group();
   private legL: THREE.Mesh;
   private legR: THREE.Mesh;
-  private walkPhase = 0;
-  private facing = 0;
+  walkPhase = 0;
+  moving = 0; // 0 = immobile, 1 = en marche (lissé)
 
   constructor() {
     const mat = (c: number) => new THREE.MeshLambertMaterial({ color: c });
@@ -36,21 +36,13 @@ export class Avatar {
     this.root.add(this.legL, this.legR, body, head, hood, pack);
   }
 
-  update(x: number, z: number, moveX: number, moveZ: number, dt: number): void {
+  /** facing : angle du personnage (il regarde toujours dans la direction de la caméra). */
+  update(x: number, z: number, facing: number, isMoving: boolean, dt: number): void {
     this.root.position.set(x, 0, z);
-    const moving = moveX !== 0 || moveZ !== 0;
-    if (moving) {
-      // Tourne doucement vers la direction de marche.
-      const target = Math.atan2(moveX, moveZ);
-      let diff = target - this.facing;
-      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-      this.facing += diff * Math.min(1, dt * 12);
-      this.walkPhase += dt * 11;
-    } else {
-      this.walkPhase *= 0.8;
-    }
-    this.root.rotation.y = this.facing;
-    const swing = Math.sin(this.walkPhase) * (moving ? 0.6 : 0);
+    this.root.rotation.y = facing;
+    this.moving += ((isMoving ? 1 : 0) - this.moving) * Math.min(1, dt * 10);
+    if (isMoving) this.walkPhase += dt * 11;
+    const swing = Math.sin(this.walkPhase) * 0.6 * this.moving;
     this.legL.rotation.x = swing;
     this.legR.rotation.x = -swing;
   }

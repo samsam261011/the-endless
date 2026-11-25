@@ -5,7 +5,8 @@ import { Player } from '../player/Player';
 import { makeTextures } from '../render/textures';
 import { ChunkAssets, buildChunkMesh, disposeChunkMesh, makeChunkAssets } from '../render/ChunkMesh';
 import { Avatar } from '../render/Avatar';
-import { ThirdPersonCamera } from '../render/ThirdPersonCamera';
+import { CameraRig } from '../render/CameraRig';
+import { Hands } from '../render/Hands';
 import { Input } from './Input';
 
 const VIEW_RADIUS = 2; // chunks affichés autour du joueur (5 x 5)
@@ -14,7 +15,8 @@ const SKY = 0x8fa3ad; // brume du jour
 export class Game {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private cam: ThirdPersonCamera;
+  private cam: CameraRig;
+  private hands = new Hands();
   private assets: ChunkAssets;
   private sun: THREE.DirectionalLight;
   private avatar = new Avatar();
@@ -48,14 +50,16 @@ export class Game {
     this.sun.shadow.bias = -0.0005;
     this.scene.add(this.sun, this.sun.target);
 
-    this.cam = new ThirdPersonCamera(new THREE.PerspectiveCamera(60, 1, 0.05, 100));
+    this.cam = new CameraRig(new THREE.PerspectiveCamera(65, 1, 0.05, 100));
+    this.renderer.autoClear = false; // on dessine le monde, puis les mains par-dessus
     this.assets = makeChunkAssets(makeTextures());
     this.scene.add(this.avatar.root);
 
     this.input = new Input(this.renderer.domElement);
-    this.input.onDrag = (dx, dy) => this.cam.rotate(dx, dy);
+    this.input.onLook = (dx, dy) => this.cam.look(dx, dy);
     this.input.onWheel = (d) => this.cam.zoom(d);
     this.input.onKey('KeyR', () => this.newWorld(randomSeed()));
+    this.input.onKey('KeyP', () => this.cam.toggle());
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -75,11 +79,12 @@ export class Game {
     this.timer.update();
     const dt = Math.min(this.timer.getDelta(), 0.05);
 
-    // Déplacement relatif à la caméra : "avancer" = s'éloigner de la caméra.
-    const { forward, right } = this.input.axes();
+    // Le personnage et la caméra regardent dans la même direction.
+    const { forward, strafe, turn } = this.input.axes();
+    this.cam.turn(turn * dt * 2.4);
     const f = this.cam.forward();
-    let mx = f.x * forward + -f.z * right;
-    let mz = f.z * forward + f.x * right;
+    let mx = f.x * forward - f.z * strafe;
+    let mz = f.z * forward + f.x * strafe;
     const len = Math.hypot(mx, mz);
     if (len > 0) {
       mx /= len;
@@ -88,14 +93,25 @@ export class Game {
     }
 
     this.refreshChunks();
-    this.avatar.update(this.player.x, this.player.y, mx, mz, dt);
-    this.cam.update(this.world, this.player.x, this.player.y, dt);
+    const facing = this.cam.yaw + Math.PI; // le modèle du personnage regarde vers +z
+    this.avatar.update(this.player.x, this.player.y, facing, len > 0, dt);
+    const first = this.cam.mode === 'first';
+    this.avatar.root.visible = !first;
+    const bob = first ? Math.abs(Math.sin(this.avatar.walkPhase)) * 0.025 * this.avatar.moving : 0;
+    this.cam.update(this.world, this.player.x, this.player.y, dt, bob);
 
     // Le soleil suit le joueur pour que les ombres restent nettes autour de lui.
     this.sun.position.set(this.player.x + 8, 20, this.player.y + 5);
     this.sun.target.position.set(this.player.x, 0, this.player.y);
 
+    this.renderer.clear();
     this.renderer.render(this.scene, this.cam.camera);
+    if (first) {
+      this.cam.camera.updateMatrixWorld();
+      this.hands.update(this.cam.camera, this.avatar.walkPhase, this.avatar.moving);
+      this.renderer.clearDepth();
+      this.renderer.render(this.hands.scene, this.cam.camera);
+    }
     this.updateHud();
   }
 
@@ -135,9 +151,11 @@ export class Game {
   private updateHud(): void {
     const c = this.world.getChunk(this.currentChunk.cx, this.currentChunk.cy);
     const text =
-      `THE ENDLESS · prototype étape 1 (3D)\n` +
+      `THE ENDLESS · prototype étape 1 (3D) · vue ${this.cam.mode === 'first' ? '1re personne' : '3e personne'}\n` +
       `graine ${this.world.seed} · chunk ${c.cx},${c.cy} · ${c.kind === 'clearing' ? 'clairière' : 'couloirs'}\n` +
-      `ZQSD / WASD / flèches : bouger · glisser la souris : tourner la caméra · molette : zoom · R : nouveau labyrinthe`;
+      (this.input.locked()
+        ? `Z/S : avancer/reculer · Q/D : pas de côté · souris : tourner · P : changer de vue · R : nouveau labyrinthe · Échap : libérer la souris`
+        : `Clique dans le jeu pour prendre la souris · Z/S : avancer/reculer · Q/D : pas de côté · ←/→ : tourner · P : changer de vue · R : nouveau labyrinthe`);
     if (text !== this.lastHud) this.hud.textContent = this.lastHud = text;
   }
 }
