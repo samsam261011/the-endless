@@ -15,6 +15,12 @@ npm run dev
 - P : passer de la vue 3e personne à la vue 1re personne (avec les mains). Molette : zoom en 3e personne.
 - `R` : nouveau labyrinthe.
 
+## Lois du labyrinthe (prototype)
+- Cycle jour/nuit de 6 minutes. Maintenir `T` accélère le temps.
+- Le refuge (point de départ) est fermé par 4 portes géantes : elles se ferment au crépuscule et se rouvrent à l'aube.
+- Chaque nuit, une partie du labyrinthe se réorganise. Le monde est divisé en 8 secteurs autour du refuge ; chacun change selon son propre rythme (toutes les 1, 2 ou 3 nuits), qui dépend de la graine. Cette règle n'est jamais expliquée en jeu.
+- Paramètres de test dans l'URL : `?seed=42`, `?phase=0.75` (moment de la journée, 0 = aube), `?spawn=20.5,7.5`.
+
 ## Architecture
 - `src/world/` : les lois du monde (génération déterministe). Ne dépend pas de Phaser.
 - `src/render/` : l'affichage 3D (Three.js) : chunks, personnage, caméra.

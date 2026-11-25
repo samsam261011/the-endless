@@ -15,11 +15,16 @@ const PIVOT_HEIGHT = 0.7;
 
 export class CameraRig {
   mode: ViewMode = 'third';
-  yaw = Math.PI / 4; // orientation du personnage (et de la caméra)
+  yaw = 0; // orientation du personnage (et de la caméra)
   elevation = 0.45; // vue 3e personne : hauteur de la caméra (angle)
   lookPitch = -0.1; // vue 1re personne : regarder en haut / en bas
   distance = 3.2;
   private current = 3.2;
+  private currentElevation = 0.45;
+  /** Distance réelle caméra-personnage (le jeu cache le corps si elle est trop petite). */
+  get actualDistance(): number {
+    return this.current;
+  }
 
   constructor(public readonly camera: THREE.PerspectiveCamera) {}
 
@@ -50,6 +55,21 @@ export class CameraRig {
     return { x: -Math.sin(this.yaw), z: -Math.cos(this.yaw) };
   }
 
+  private direction(elev: number): THREE.Vector3 {
+    return new THREE.Vector3(Math.sin(this.yaw) * Math.cos(elev), Math.sin(elev), Math.cos(this.yaw) * Math.cos(elev));
+  }
+
+  /** Jusqu'où la caméra peut reculer dans cette direction sans entrer dans un mur. */
+  private freeDistance(world: World, target: THREE.Vector3, elev: number): number {
+    const dir = this.direction(elev);
+    const p = new THREE.Vector3();
+    for (let d = 0.15; d <= this.distance; d += 0.05) {
+      p.copy(target).addScaledVector(dir, d);
+      if (p.y < WALL_H + 0.15 && blocked(world, p.x, p.z, 0.12)) return Math.max(0.3, d - 0.12);
+    }
+    return this.distance;
+  }
+
   update(world: World, px: number, pz: number, dt: number, bob: number): void {
     if (this.mode === 'first') {
       const f = this.forward();
@@ -60,23 +80,21 @@ export class CameraRig {
     }
 
     const target = new THREE.Vector3(px, PIVOT_HEIGHT, pz);
-    const dir = new THREE.Vector3(
-      Math.sin(this.yaw) * Math.cos(this.elevation),
-      Math.sin(this.elevation),
-      Math.cos(this.yaw) * Math.cos(this.elevation),
-    );
-    // Si un mur s'interpose, la caméra se rapproche : le personnage reste toujours visible.
-    let free = this.distance;
-    const p = new THREE.Vector3();
-    for (let d = 0.15; d <= this.distance; d += 0.05) {
-      p.copy(target).addScaledVector(dir, d);
-      if (p.y < WALL_H + 0.15 && blocked(world, p.x, p.z, 0.12)) {
-        free = Math.max(0.3, d - 0.12);
-        break;
+    // Dans un couloir étroit, si un mur bloque la vue, la caméra monte d'elle-même
+    // (comme une grue) au lieu de se coller au dos du personnage.
+    const wanted = Math.min(this.distance, 2);
+    let bestElev = this.elevation, bestFree = this.freeDistance(world, target, this.elevation);
+    for (let e = this.elevation + 0.15; bestFree < wanted && e <= 1.4; e += 0.15) {
+      const free = this.freeDistance(world, target, e);
+      if (free > bestFree + 0.2) {
+        bestFree = free;
+        bestElev = e;
       }
     }
+    this.currentElevation += (bestElev - this.currentElevation) * Math.min(1, dt * 5);
+    const free = this.freeDistance(world, target, this.currentElevation);
     this.current = free < this.current ? free : this.current + (free - this.current) * Math.min(1, dt * 4);
-    this.camera.position.copy(target).addScaledVector(dir, this.current);
+    this.camera.position.copy(target).addScaledVector(this.direction(this.currentElevation), this.current);
     this.camera.lookAt(target);
   }
 }
